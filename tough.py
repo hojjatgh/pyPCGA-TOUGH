@@ -26,6 +26,7 @@ from shutil import copy2, rmtree
 import subprocess
 #from subprocess import call
 from time import time
+from scipy.interpolate import interp1d
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 '''
@@ -74,6 +75,31 @@ class Model:
             else:
                 raise NameError('dx is not defined')
             
+            if 'xlocs' in params:
+                self.xlocs = params['xlocs']
+            else:
+                raise NameError('xlocs is not defined')
+
+            if 'ylocs' in params:
+                self.ylocs = params['ylocs']
+            else:
+                raise NameError('ylocs is not defined')
+
+            if 'zlocs' in params:
+                self.zlocs = params['zlocs']
+            else:
+                raise NameError('zlocs is not defined')
+
+            if 'obs_type' in params:
+                self.obs_type = params['obs_type']
+            else:
+                raise NameError('obs_type is not defined')
+            
+            if 't_obs_interval' in params:
+                self.t_obs_interval = params['t_obs_interval']
+            else:
+                raise NameError('t_obs_interval is not defined')
+                
     def create_dir(self,idx=None):
         
         mydirbase = "./simul/simul"
@@ -129,6 +155,7 @@ class Model:
         # Table 4.9 page 78 pytough tutorial and Appendix E of TOUGH2 tutorial
         # data.parameter is a dictionary
         # each parameter can be called as dat.parameter['parameter name']
+
         dat.parameter.update(
             {'max_timesteps': 9000,                 # maximum number of time steps
             'tstop': 0.32342126E+08,                   # stop time
@@ -171,26 +198,14 @@ class Model:
         
         dat.grid.add_rocktype(r2)
         dat.grid.add_rocktype(r3)
-        #dat.grid.add_rocktype(r4)
         
         dat.multi.update({'num_components': 1, 'num_equations':2, 'num_phases':2, 'num_secondary_parameters':6})
 
-        #print(dat.multi)
-        #print(dat.grid.rocktype)
-        #print(dat.grid.check)
-        #print(r3.permeability)
-
-        
         # SOLVR Table 4.11 page 79 PyTough
         dat.solver.update({'type': 5, 'z_precond':1,'o_precond': 0, 'relative_max_iterations':.8,'closure':1.e-7 })
         # TIMES table 4.8
         dat.output_times.update({'num_times_specified':2, 'time': [0.8640E+04, 0.32342126E+08]})
 
-        # prints output times in days
-        #print(dat.output_times['time'][1]/86400)
-        # print center
-        #print(dat.grid.blocklist[1000].centre)
-        
         # rocktypes:
         # Setting rocktype based on the block's 'z' coordinate
         z_bottom = -17.
@@ -202,42 +217,29 @@ class Model:
                 blk.rocktype=r2
             else: blk.rocktype=r3
         
-        lense = 0
-
-        if lense==1:
-            # within homeogeneous domain, assign a lense that is in the way of the injection
-            lense_bottom_z = -14
-            lense_top_z = -8
-            lense_start_x = 65
-            lense_end_x = 115
-            for blk in dat.grid.blocklist[1:]:
-                if lense_bottom_z < blk.centre[2] < lense_top_z:
-                    if lense_start_x < blk.centre[0] < lense_end_x:
-                        blk.rocktype=r4
-
         for blk, pmx in zip(dat.grid.blocklist[1:], np.exp(s)):
             #blk.pmx = 1.
             blk.pmx = pmx
         
-        #print(dat.grid)
-        #print(r2)
-        
-
         # setting the blocks for FOFT
         # this section needs to be modified. FOFT blocks can be given by the coordinate of the block, or by the block name
         # currently, it accepts the cell number in each direction
         # for example the first cell here is located in grid (2,2) in 5th layer
-        x_obs = [7,10,14]#[2,4,14,16]
-        y_obs = [5,5,5]#[2,4,14,16]
-        z_obs = [6,6,6]
+        
+        xlocs, ylocs, zlocs = self.xlocs, self.ylocs, self.zlocs
+        
+        nxlocs, nylocs, nzlocs = xlocs.shape[0],ylocs.shape[0],zlocs.shape[0]
+        #nobs = nxlocs*nylocs*nzlocs
 
+        x_obs = np.tile(xlocs,nylocs*nzlocs)
+        y_obs = np.tile(np.repeat(ylocs,nxlocs),nylocs)
+        z_obs = np.repeat(zlocs,nxlocs*nylocs) 
+        
         # from function definition above 
         # set_measurement_blk(dat, x, y, z, nx):
         self.set_measurement_blk(dat, x_obs, y_obs, z_obs, nx)
 
-        print(dat.history_block)
-        print(nx)
-        # injection 
+        # adding boundary conditions
 
         center = [150, 150] # [x,y] position of the center
         L = 40     # length of one side of square
@@ -253,32 +255,20 @@ class Model:
         # running the tough2 model
         subprocess.call(["mpirun","-n","2","tough2-mp-eos1.debug"], stdout=subprocess.PIPE)
 
-        #measured_data = self.read_FOFT(sim_dir)
-        
-        measurements = self.observation_model(sim_dir,'Gas Pressure')
-        
-        #data_save = self.read_SAVE()
-        #print(data_save['Temperature'])
-        #print(data_save['Pressure'])
+        # read simulation results with obs_type = 'Gas Pressure' and/or 'Temperature'
+        #from time import time
+        measurements = []
+        for str_obs_type in self.obs_type:
+            #stime = time()
+            measurements.extend(self.observation_model(sim_dir,str_obs_type))
+            #print('measurement interpolation: %f sec' % (time() - stime))
 
         simul_obs = np.array(measurements).reshape(-1)
-
-        #print(dat.history_block[2])
-        #self.plot_FoFT(measured_data, dat.history_block[2], variable = 'Temperature', ylim = [0, 100], xlim = [0, 86400*347], figname='fig2')
         
-        #print(dat.history_block[0])
-        #self.plot_FoFT(measured_data, dat.history_block[0], variable = 'Temperature', ylim = [0, 100], xlim = [0, 86400*347], figname='fig0') 
-
-        #print(dat.history_block[1])
-        #self.plot_FoFT(measured_data, dat.history_block[1], variable = 'Temperature', ylim = [0, 200], xlim = [0, 86400*347], figname='fig1') 
-
-        #data_save_T=np.array(data_save['Temperature']) # you should give the whole data frame as input to plot_SAVE function
-        #print(data_save_T)                                    # so you don't need to read the Temperature column here. I renamed the variable here
-        
+        #data_save = self.read_SAVE()
         #self.plot_SAVE(dat, data_save, nx, y=4, col = 'Pressure', clim = [380, 420], figname='P')
-        
         #self.plot_SAVE(dat, data_save, nx, y=4, col = 'Temperature', clim = [0, 60], figname='H')
-        
+
         os.chdir(self.homedir)
         
         if self.deletedir:
@@ -300,29 +290,26 @@ class Model:
     def read_FOFT(self,cur_dir):
         """ Function to read all FOFT files in the directory.
         The function returns a pandas dataframe containing measurements"""
+        
         FOFT_files = [filename for filename in os.listdir('.') if filename.startswith("FOFT")]
         columns_name = ['Element','Time', 'Gas Pressure', 'Gas Saturation','Temperature']
-        rows = [] 
+        frame = [] 
         for filename in FOFT_files:
-            with open(filename, 'rb') as f_input:
-                count =0
-                for row in f_input:
-                    if count > 1:
-                        a= str(row[0:-1])
-                        cols = [col for col in a[2:-1].split(' ') if len(col)]
-                        if len(cols)==7:
-                            cols[1] = cols[1].ljust(2)
-                            cols[1] = cols[1].rjust(3) + cols[2].rjust(2)
-                            cols.pop(2)
-                            cols.pop(0)
-                            rows.append(cols)
-                        if len(cols)==6:
-                            cols[1] = cols[1].rjust(5)
-                            cols.pop(0)
-                            rows.append(cols)
-                    count+=1
-        frame = pd.DataFrame(rows, columns=columns_name)
+            df = pd.read_fwf(filename,colspecs=[(12,16),(21,35),(37,52),(54,69),(72,86)],skiprows=[0,1],names=columns_name)
+            frame.append(df)
+        frame = pd.concat(frame)
+            
+        #     with open(filename, 'rb') as f_input:
+        #         count =0
+        #         for row in f_input:
+        #             if count > 1:
+        #                 # follow the file format!!!
+        #                 rows.append([row[12:16],row[21:35],row[37:52],row[54:69],row[72:86]])
+        #             count = count + 1
+        # frame = pd.DataFrame(rows, columns=columns_name)
+
         frame[['Time','Gas Pressure','Gas Saturation','Temperature']] = frame[['Time','Gas Pressure','Gas Saturation','Temperature']].apply(pd.to_numeric)
+        
         return frame
 
     def set_measurement_blk_list(self,dat, x_mid, dx, y_mid, dy, z_mid, dz):
@@ -333,6 +320,7 @@ class Model:
                 if x_mid-dx/2 < blk.centre[0] < x_mid+dx/2:
                     if y_mid-dy/2 < blk.centre[1] < y_mid+dy/2:
                         dat.history_block.append(blk.name)
+        return 
 
     def set_measurement_blk(self,dat, x, y, z, nx):
         ''' set measurement blk
@@ -344,6 +332,8 @@ class Model:
         block_list = nx[0]*nx[1]*(z_obs-1)+nx[0]*(y_obs-1)+x_obs
         for blk_number in block_list:
             dat.history_block.append(dat.grid.blocklist[blk_number].name)
+        
+        return 
 
     def heat_generator(self,dat, geo, center, L, qmax, L_scale, method = 'Square'):
         ''' heat generator
@@ -356,11 +346,11 @@ class Model:
                         cols.append(col)
             dxs=np.array([col.centre[0]-center[0] for col in cols])/L_scale
             dys=np.array([col.centre[1]-center[1] for col in cols])/L_scale
-            print(dxs)
-            print(dys)
+            #print(dxs)
+            #print(dys)
             corlength = 0.5
             qcol=qmax*np.exp(-0.5*((dxs*dxs+dys*dys)/(corlength*corlength)))
-            print(qcol)
+            #print(qcol)
             
             #layer=geo.layerlist[-1] Changing to add the heat in a non-boundary layer
             layer=geo.layerlist[-5]
@@ -378,7 +368,7 @@ class Model:
             dat.add_generator(t2generator(name=' ex3', block=' f145', type='COM1', gx=-.6))
             dat.add_generator(t2generator(name=' ex4', block=' g145', type='COM1', gx=-.6))
             
-            print('Generators added')
+            #print('Generators added')
             
             #for col,q in zip(cols,qcol):
             #    blkname=geo.block_name(layer.name,col.name)
@@ -388,6 +378,7 @@ class Model:
         else:
             raise NotImplementedError
 
+        return
 
     def construct_grid(self,dx_grid, nx):
         """Constructing a TOUGH2 input geometry file for a 3D rectangular
@@ -508,11 +499,29 @@ class Model:
         '''
         if obs_type != 'Temperature' and  obs_type != 'Gas Pressure':
             raise ValueError('obs_type should be either Temperature of Gas Pressure')
-        measured_data = self.read_FOFT(cur_dir)
-        #measured_data = read_SAVE()
-        obs = measured_data[obs_type]
+        sim_results = self.read_FOFT(cur_dir)
+        # order by Element and Time for easy plotting 
+        #sim_obs.sort_values(by=['Element','Time']) 
+        #obs = sim_obs[obs_type]
+
+        elements = sim_results['Element'].unique()
+        elements.sort()
         
-        return obs
+        dt = self.t_obs_interval
+        obs = []
+        for elem in elements:
+            t = np.array(sim_results[sim_results['Element']==elem]['Time'])
+            strtidx= np.ceil(t.min()/dt).astype(np.int)
+            endidx = np.floor(t.max()/dt).astype(np.int)
+
+            t_obs = [dt*i for i in range(strtidx,endidx+1)]
+            obs_all = np.array(sim_results[sim_results['Element']==elem][obs_type])
+            f = interp1d(t, obs_all)
+            obs_at_t_obs = f(t_obs)
+            obs.extend(obs_at_t_obs)
+
+        return np.array(obs)
+
 
     def run(self,s,par,ncores=None):
         if ncores is None:
@@ -545,12 +554,16 @@ if __name__ == '__main__':
 
     s = np.loadtxt("true_30_10_10_gau.txt")
     s = s.reshape(-1, 1)
-    #nx = [30, 30, 10]
     nx = [30, 10, 10]
     dx = [10., 10., 2.]
-    #m = nx[0]*nx[1]*nx[2]
     
-    params = {'nx':nx,'dx':dx, 'deletedir':False}
+    # monitoring indices 
+    xlocs = np.arange(5,21,2)
+    ylocs = np.array([1,3,5,7])
+    zlocs = np.array([3,5,7,9])
+
+    params = {'nx':nx,'dx':dx, 'deletedir':False, 'xlocs': xlocs, 'ylocs':ylocs, 'zlocs':zlocs, 'obs_type':['Gas Pressure','Temperature'],'t_obs_interval':86400.*5.}
+    #params = {'nx':nx,'dx':dx, 'deletedir':False, 'xlocs': xlocs, 'ylocs':ylocs, 'zlocs':zlocs, 'obs_type':['Gas Pressure']}
     par = False # parallelization false
 
     mymodel = tough.Model(params)
@@ -561,8 +574,17 @@ if __name__ == '__main__':
     simul_obs = mymodel.run(s,par)
     print('simulation run: %f sec' % (time() - stime))
 
-    #import sys
-    #sys.exit(0)
+    obs = np.copy(simul_obs)
+    nobs = obs.shape[0]
+    obs[:nobs/2] = simul_obs[:nobs/2] + 10000.*np.random.randn(nobs/2,1)
+    obs[nobs/2:] = simul_obs[nobs/2:] + 0.5*np.random.randn(nobs/2,1)
+    
+    np.savetxt('obs.txt',obs)
+    np.savetxt('obs_pres.txt',obs[:nobs/2])
+    np.savetxt('obs_temp.txt',obs[nobs/2:])
+    
+    import sys
+    sys.exit(0)
 
     ncores = 3
     nrelzs = 3
