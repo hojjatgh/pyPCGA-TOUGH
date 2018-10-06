@@ -47,15 +47,15 @@ def forward_model(s, parallelization, ncores=None):
         simul_obs = model.run(s, parallelization)
     return simul_obs
 
-params = {'R': (1000.0) ** 2, 'n_pc': 50,
-        'maxiter': 10, 'restol': 0.01,
+params = {'R': (1000.0) ** 2, 'n_pc': 30,
+        'maxiter': 10, 'restol': 0.1,
         'matvec': 'FFT', 'xmin': xmin, 'xmax': xmax, 'N': N,
         'prior_std': prior_std, 'prior_cov_scale': prior_cov_scale,
         'kernel': kernel, 'post_cov': "diag",
         'precond': True, 'LM': True,
-        'parallel': True, 'linesearch': True,
-        'forward_model_verbose': False, 'verbose': True,
-        'iter_save': True, 'ncores':18}
+        'parallel': True, 'linesearch': True, 'precision': 2e-3,
+        'forward_model_verbose': True, 'verbose': True,
+        'iter_save': True, 'ncores':6}
 
 # params['objeval'] = False, if true, it will compute accurate objective function
 # params['ncores'] = 36, with parallell True, it will determine maximum physcial core unless specified
@@ -82,7 +82,7 @@ for i in range(0,10,2):
     ax[0].pcolor(s_true3d[i,:,:],vmin=-2.0,vmax=1.5, cmap=plt.get_cmap('jet'))
     ax[0].set_title('true lnK')
     
-    ax[1].pcolor(s_hat3d[i,:,:],vmin=-2.0,vmax=-1.5, cmap=plt.get_cmap('jet'))
+    ax[1].pcolor(s_hat3d[i,:,:],vmin=-2.0,vmax=1.5, cmap=plt.get_cmap('jet'))
     ax[1].set_title('estimated ln(pmx)')
     fig.savefig('est_lay%0d.png' % (i))
     plt.close(fig)

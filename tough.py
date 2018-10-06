@@ -252,9 +252,12 @@ class Model:
         self.modify_infile()
         self.clear_FOFT(sim_dir)
 
+        from time import time
+        stime = time()
         # running the tough2 model
-        subprocess.call(["mpirun","-n","2","tough2-mp-eos1.debug"], stdout=subprocess.PIPE)
-
+        subprocess.call(["mpirun","-n","6","--bind-to","none","tough2-mp-eos1.debug"], stdout=subprocess.PIPE)
+        print('tough simulation run: %f sec' % (time() - stime))
+        
         # read simulation results with obs_type = 'Gas Pressure' and/or 'Temperature'
         #from time import time
         measurements = []
@@ -574,20 +577,20 @@ if __name__ == '__main__':
     simul_obs = mymodel.run(s,par)
     print('simulation run: %f sec' % (time() - stime))
 
-    obs = np.copy(simul_obs)
-    nobs = obs.shape[0]
-    obs[:nobs/2] = simul_obs[:nobs/2] + 10000.*np.random.randn(nobs/2,1)
-    obs[nobs/2:] = simul_obs[nobs/2:] + 0.5*np.random.randn(nobs/2,1)
+    #obs = np.copy(simul_obs)
+    #nobs = obs.shape[0]
+    #obs[:nobs/2] = simul_obs[:nobs/2] + 10000.*np.random.randn(nobs/2,1)
+    #obs[nobs/2:] = simul_obs[nobs/2:] + 0.5*np.random.randn(nobs/2,1)
     
-    np.savetxt('obs.txt',obs)
-    np.savetxt('obs_pres.txt',obs[:nobs/2])
-    np.savetxt('obs_temp.txt',obs[nobs/2:])
+    #np.savetxt('obs.txt',obs)
+    #np.savetxt('obs_pres.txt',obs[:nobs/2])
+    #np.savetxt('obs_temp.txt',obs[nobs/2:])
     
-    import sys
-    sys.exit(0)
+    #import sys
+    #sys.exit(0)
 
-    ncores = 3
-    nrelzs = 3
+    ncores = 6
+    nrelzs = 12
     
     print('(2) parallel run with ncores = %d' % ncores)
     par = True # parallelization false
@@ -595,6 +598,10 @@ if __name__ == '__main__':
     for i in range(nrelzs):
         srelz[:,i:i+1] = s + 0.1*np.random.randn(np.size(s,0),1)
     
+    stime = time()
+    
     simul_obs_all = mymodel.run(srelz,par,ncores = ncores)
 
+    print('simulation run: %f sec' % (time() - stime))
+    
     print(simul_obs_all)
