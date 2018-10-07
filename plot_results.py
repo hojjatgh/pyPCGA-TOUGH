@@ -1,6 +1,8 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt 
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 s_true = np.loadtxt('true_30_10_10_gau.txt')
 s_hat = np.loadtxt('shat3.txt')
 obs = np.loadtxt('obs_pres.txt')
@@ -23,17 +25,21 @@ for i in range(0,10,2):
     
     ax[1].pcolor(s_hat3d[i,:,:],vmin=-2.0,vmax= 1.5, cmap=plt.get_cmap('jet'))
     ax[1].set_title('estimated ln(pmx)in layer %0d' %(i))
-    #fig.savefig('est_lay%0d.png' % (i))
+    fig.savefig('est_lay%0d.png' % (i))
     plt.show()
     plt.close(fig)
 
 i = 4
 fig = plt.figure()
-plt.pcolor(post_std[i,:,:], cmap=plt.get_cmap('jet'))
+ax = plt.gca()
+im = plt.pcolor(post_std[i,:,:], cmap=plt.get_cmap('jet'))
 plt.title('Uncertainty (posterior std) in lnK estimate, layer %d' % (i))
-plt.colorbar()
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+plt.colorbar(im, cax=cax)
+ax.set_aspect('equal', 'box')
 plt.show()
-#fig.savefig('std.png')
+fig.savefig('std.png')
 plt.close(fig)
 
 # change head?
@@ -54,6 +60,6 @@ axes.set_ylim([xmin,xmax])
 axes.xaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval)+1))
 axes.yaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval)+1))
 axes.set_aspect('equal', 'box')
-#fig.savefig('obs.png')
+fig.savefig('obs.png')
 plt.show()
 plt.close(fig)
