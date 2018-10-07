@@ -18,7 +18,7 @@ zlocs = np.array([3,5,7,9])
 
 forward_model_params = {'nx':nx,'dx':dx, 'deletedir':False, \
 'xlocs': xlocs, 'ylocs':ylocs, 'zlocs':zlocs, \
-'obs_type':['Gas Pressure'],'t_obs_interval':86400.*5.}
+'obs_type':['Gas Pressure','Temperature'],'t_obs_interval':86400.*5.}
 
 
 m = nx[0]*nx[1]*nx[2]
@@ -35,7 +35,15 @@ def kernel(r): return (prior_std ** 2) * np.exp(-r**2)
 
 # forward model wrapper for pyPCGA
 s_true = np.loadtxt("true_30_10_10_gau.txt")
-obs = np.loadtxt('obs_pres.txt')
+
+# load noisy observatoins
+obs = np.loadtxt('obs.txt')
+nobs = obs.shape[0]
+# joint inversion prior error level
+
+std_obs = np.ones_like(obs)
+std_obs[:7400]=1000.
+std_obs[7400:]=0.5
 
 # prepare interface to run as a function
 def forward_model(s, parallelization, ncores=None):
@@ -47,7 +55,7 @@ def forward_model(s, parallelization, ncores=None):
         simul_obs = model.run(s, parallelization)
     return simul_obs
 
-params = {'R': (1000.0) ** 2, 'n_pc': 30,
+params = {'R': std_obs** 2, 'n_pc': 30,
         'maxiter': 10, 'restol': 0.5,
         'matvec': 'FFT', 'xmin': xmin, 'xmax': xmax, 'N': N,
         'prior_std': prior_std, 'prior_cov_scale': prior_cov_scale,
@@ -87,7 +95,7 @@ for i in range(0,10,2):
     
     ax[1].pcolor(s_hat3d[i,:,:],vmin=-2.0,vmax= 1.5, cmap=plt.get_cmap('jet'))
     ax[1].set_title('estimated ln(pmx) in layer %0d' %(i))
-    fig.savefig('est_pres_lay%0d.png' % (i))
+    fig.savefig('est_joint_lay%0d.png' % (i))
     #plt.show()
     plt.close(fig)
 
@@ -100,40 +108,56 @@ for i in range(0,10,2):
     plt.colorbar(im, cax=cax)
     ax.set_aspect('equal', 'box')
     #plt.show()
-    fig.savefig('std_pres_layer%d.png' % (i))
+    fig.savefig('std_joint_layer%d.png' % (i))
     plt.close(fig)
 
-# change to head?
-interval = 1000000
-
+interval_pres = 1000000
+interval_temp = 10
 nobs = obs.shape[0]
-fig = plt.figure()
-plt.title('pres: obs. vs simul.')
-plt.plot(obs, simul_obs, '.')
-plt.xlabel('observation')
-plt.ylabel('simulation')
-minobs = np.vstack((obs.reshape(-1), simul_obs.reshape(-1))).reshape(-1).min()
-maxobs = np.vstack((obs.reshape(-1), simul_obs.reshape(-1))).reshape(-1).max()
+fig, ax = plt.subplots(nrows=1,ncols=2)
 
-xmin, xmax = math.floor(minobs/interval)*interval, math.ceil(maxobs/interval)*interval
+obs_pres = obs[:7400]
+simul_obs_pres = simul_obs[:7400]
+obs_temp = obs[7400:]
+simul_obs_temp = simul_obs[7400:]
 
-plt.plot(np.linspace(xmin, xmax, 20), np.linspace(xmin, xmax, 20), 'k-')
-axes = plt.gca()
-axes.set_xlim([xmin,xmax])
-axes.set_ylim([xmin,xmax])
-axes.xaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval)+1))
-axes.yaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval)+1))
-axes.set_aspect('equal', 'box')
-fig.savefig('obs_pres.png')
+ax[0].plot(obs_pres,simul_obs_pres,'.')
+ax[0].set_xlabel('observation')
+ax[0].set_ylabel('simulation')
+ax[0].set_title('pressure')
+minobs = np.vstack((obs_pres.reshape(-1), simul_obs_pres.reshape(-1))).reshape(-1).min()
+maxobs = np.vstack((obs_pres.reshape(-1), simul_obs_pres.reshape(-1))).reshape(-1).max()
+xmin, xmax = math.floor(minobs/interval_pres)*interval_pres, math.ceil(maxobs/interval_pres)*interval_pres
+ax[0].plot(np.linspace(xmin, xmax, 20), np.linspace(xmin, xmax, 20), 'k-')
+ax[0].set_xlim([xmin,xmax])
+ax[0].set_ylim([xmin,xmax])
+ax[0].xaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval_pres)+1))
+ax[0].yaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval_pres)+1))
+ax[0].set(adjustable='box-forced', aspect='equal')
+
+ax[1].plot(obs_temp,simul_obs_temp,'.')
+ax[1].set_xlabel('observation')
+ax[1].set_ylabel('simulation')
+ax[1].set_title('temperature')
+minobs = np.vstack((obs_temp.reshape(-1), simul_obs_temp.reshape(-1))).reshape(-1).min()
+maxobs = np.vstack((obs_temp.reshape(-1), simul_obs_temp.reshape(-1))).reshape(-1).max()
+xmin, xmax = math.floor(minobs/interval_temp)*interval_temp, math.ceil(maxobs/interval_temp)*interval_temp
+ax[1].plot(np.linspace(xmin, xmax, 20), np.linspace(xmin, xmax, 20), 'k-')
+ax[1].set_xlim([xmin,xmax])
+ax[1].set_ylim([xmin,xmax])
+ax[1].xaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval_temp)+1))
+ax[1].yaxis.set_ticks(np.linspace(xmin,xmax,int(xmax/interval_temp)+1))
+ax[1].set(adjustable='box-forced', aspect='equal')
+
+fig.savefig('obs_joint.png')
 plt.show()
 plt.close(fig)
-
 
 fig = plt.figure()
 plt.semilogy(np.linspace(1,len(prob.objvals),len(prob.objvals)), prob.objvals, 'r-')
 plt.xticks(np.linspace(1,len(prob.objvals),len(prob.objvals)))
 plt.title('obj values over iterations')
 plt.axis('tight')
-fig.savefig('obj_pres.png')
+fig.savefig('obj_joint.png')
 plt.close(fig)
 
